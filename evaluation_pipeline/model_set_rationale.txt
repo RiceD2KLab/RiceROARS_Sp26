@@ -1,0 +1,283 @@
+================================================================================
+  ROAR PIPELINE — MODEL SET SELECTION RATIONALE
+  Document version : 1.0
+  Author           : Pipeline evaluation team
+  Purpose          : Justify the two additional model sets chosen for the
+                     multi-model ablation study alongside the baseline setup
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+BASELINE (Model Set 1) — Reference point
+────────────────────────────────────────────────────────────────────────────────
+
+  Evaluator : Llama-4-Maverick-17B-128E-Instruct-FP8  (Azure AI Foundry MaaS)
+  Verifier  : GPT-5.4-mini                             (Azure OpenAI service)
+
+  This is the current production setup.  LLaMA-4-Maverick is a large (17B
+  parameter, 128-expert MoE) instruction-tuned model with strong text
+  understanding.  GPT-5.4-mini is a fast, instruction-following model used
+  as a lightweight quality-control verifier.
+
+────────────────────────────────────────────────────────────────────────────────
+WHY MODEL SELECTION MATTERS FOR THIS TASK
+────────────────────────────────────────────────────────────────────────────────
+
+  The ROAR evaluation pipeline has two distinct cognitive demands:
+
+  EVALUATOR demands
+    • Multi-criteria rubric application: score 4 sections against specific,
+      sometimes nuanced criteria simultaneously.
+    • Evidence detection: identify whether a rubric, numeric data, or a
+      continuation plan is explicitly present in the text.
+    • Reliable JSON output: produce structured scores every time without
+      hallucinating extra fields or malforming the schema.
+
+  VERIFIER demands
+    • Rule enforcement: catch specific logic errors (e.g., "course grades
+      alone ≠ direct assessment with rubric") rather than just agree or disagree.
+    • Consistency under repetition: run on every evaluation — must be fast
+      and cost-effective.
+    • Binary error detection: the question is not "is this good?" but "did
+      the evaluator apply the stated rule correctly?" — a narrower, more
+      structured task.
+
+  These two roles benefit from different model properties.  The evaluator
+  needs strong reasoning and rich language understanding; the verifier needs
+  precise rule-following and speed.
+
+────────────────────────────────────────────────────────────────────────────────
+MODEL SETS CONSIDERED AND ELIMINATED
+────────────────────────────────────────────────────────────────────────────────
+
+  The following models from the 102-model catalog were evaluated and rejected:
+
+  GPT-5 / GPT-5-pro / GPT-5.4-pro
+    Rejected as evaluator — significantly more expensive than alternatives
+    with no evidence of meaningfully better performance on binary rubric
+    scoring.  The task does not require frontier generative capability.
+
+  Kimi-K2.5 / Kimi-K2-Thinking
+    Rejected — interesting reasoning capability but inconsistent JSON output
+    reliability on Azure deployments has been observed; less battle-tested
+    for structured evaluation pipelines than the models selected.
+
+  grok-4-20-reasoning / grok-4 / grok-4-fast-reasoning
+    Rejected — very capable but expensive; Grok models tend to produce
+    verbose reasoning traces that complicate JSON parsing in the pipeline.
+    The task does not require frontier-level reasoning at grok-4 scale.
+
+  Llama-3.3-70B-Instruct
+    Rejected — this is a smaller and older model family than the current
+    baseline (LLaMA-4-Maverick at 17B with 128 MoE experts is architecturally
+    superior).  Selecting it would likely represent a downgrade.
+
+  DeepSeek-R1 / DeepSeek-R1-0528 / MAI-DS-R1
+    Rejected as evaluator — these are full reasoning models with long
+    thinking traces (often tens of thousands of tokens) making them slow and
+    expensive for batch processing of 39+ documents × multiple prompt sets.
+    o4-mini achieves similar reasoning gains at a fraction of the cost.
+
+  Cohere-rerank-v4.0-pro / Cohere-rerank-v4.0-fast
+    Rejected — these are reranking models (listwise comparison), not
+    chat completion models.  They cannot produce the structured JSON scores
+    required by the pipeline.
+
+  Cohere-command-a / qwen3-32b / Mistral-Large-3
+    Rejected — general-purpose chat models without a clear performance
+    advantage over the selected alternatives for this specific task;
+    less tested on this Azure deployment configuration.
+
+  gpt-4o / gpt-4o-mini
+    Rejected — previous-generation GPT-4o family; gpt-4.1 is its successor
+    with better instruction following and a larger context window.  Using
+    gpt-4o would be a lateral or backward move relative to gpt-4.1.
+
+  Embedding models, audio models, image models, TTS/STT, rerankers
+    Not applicable — these are not chat completion models and cannot
+    generate the structured scoring output required.
+
+────────────────────────────────────────────────────────────────────────────────
+MODEL SET 2 — "OpenAI Reasoning"
+────────────────────────────────────────────────────────────────────────────────
+
+  Evaluator : o4-mini            (Azure OpenAI service — AzureChatOpenAI)
+  Verifier  : gpt-4.1            (Azure OpenAI service — AzureChatOpenAI)
+
+  HYPOTHESIS
+    A reasoning model as evaluator will apply multi-criteria rubrics more
+    systematically and with fewer errors than a standard chat model, because
+    it is designed to think step-by-step before committing to an answer.
+
+  WHY o4-mini AS EVALUATOR
+
+    o4-mini belongs to OpenAI's "o-series" — models that perform explicit
+    internal chain-of-thought reasoning before producing a response.  This
+    directly addresses the most common failure mode observed in the baseline:
+    the evaluator accepting vague sections as passing because it pattern-
+    matches on surface signals rather than checking each criterion rigorously.
+
+    For ROAR scoring, each section requires answering a sequence of binary
+    sub-questions:
+      "Does this text contain a rubric?"
+      "Does this text contain actual numbers?"
+      "Is there a comparison to a threshold?"
+
+    Reasoning models are purpose-built for this kind of systematic,
+    multi-step logical checking.  They are less likely to be influenced by
+    the overall "feel" of a document and more likely to ground scores in
+    explicit evidence.
+
+    o4-mini (not o3 or o3-pro) is chosen because:
+      • It is the cost-efficient reasoning model — faster and cheaper than
+        o3/o3-pro while retaining the reasoning advantage.
+      • It is available on Azure OpenAI service alongside gpt-5.4-mini,
+        requiring no new endpoint configuration.
+      • Its output length is predictable — it does not generate excessively
+        long reasoning traces like the full DeepSeek-R1 series.
+
+  WHY gpt-4.1 AS VERIFIER
+
+    gpt-4.1 is the successor to gpt-4o in the GPT-4 family and represents
+    a significant improvement in instruction following and rule adherence.
+    Compared to the current verifier (gpt-5.4-mini):
+
+      • gpt-4.1 has better performance on tasks requiring precise rule
+        application — exactly what the verifier does ("does the evaluator's
+        score comply with rule X?").
+      • It is on the same Azure OpenAI service, requiring no new endpoint.
+      • Its context window (1M tokens) is large enough to comfortably hold
+        the full verifier prompt including all ROAR sections and evaluator
+        output.
+
+    This combination specifically tests whether the bottleneck in the baseline
+    pipeline is the evaluator (replaced by a reasoning model) or the verifier
+    (upgraded from mini to full gpt-4.1).
+
+  EXPECTED TRADE-OFFS
+    Speed   : o4-mini is slower than LLaMA-4-Maverick (reasoning overhead).
+    Cost    : Higher per-run cost due to o4-mini reasoning tokens.
+    Benefit : Expected higher precision — fewer false positives on bad ROARs
+              because the reasoning model is less likely to accept vague
+              sections without finding explicit evidence.
+
+────────────────────────────────────────────────────────────────────────────────
+MODEL SET 3 — "DeepSeek + Reasoning Verifier"
+────────────────────────────────────────────────────────────────────────────────
+
+  Evaluator : DeepSeek-V3.2      (Azure AI Foundry MaaS — openai backend)
+  Verifier  : o4-mini            (Azure OpenAI service — AzureChatOpenAI)
+
+  HYPOTHESIS
+    A non-LLaMA, non-GPT evaluator with different training data and
+    architecture will produce different scoring biases.  Pairing it with a
+    reasoning verifier creates the strongest possible error-catching layer
+    regardless of which family produces the evaluator output.
+
+  WHY DeepSeek-V3.2 AS EVALUATOR
+
+    DeepSeek-V3.2 is a top-tier open-weights-class model that consistently
+    ranks at or near the top of structured text evaluation benchmarks.  Its
+    key advantages for this task:
+
+    (a) Structured output reliability
+        DeepSeek-V3 architecture has been specifically optimized for
+        instruction following and JSON-mode output.  It rarely produces
+        malformed JSON — directly addressing the parse errors seen in the
+        baseline (SMGT PLO3 in early runs).
+
+    (b) Different scoring biases
+        LLaMA-4-Maverick was trained by Meta with a specific RLHF recipe.
+        DeepSeek-V3.2 was trained by DeepSeek with a different data mix and
+        alignment approach.  Running both exposes whether systematic errors
+        (e.g., consistent PLO over-strictness) are model-family-specific or
+        task-specific.
+
+    (c) Same deployment pattern as baseline evaluator
+        DeepSeek-V3.2 is available on Azure AI Foundry MaaS using the same
+        `models/` endpoint pattern as the current LLaMA evaluator.  No new
+        infrastructure is needed.
+
+    (d) Context window and speed
+        DeepSeek-V3.2 handles long contexts efficiently and has fast inference
+        on Azure's MaaS infrastructure.
+
+  WHY o4-mini AS VERIFIER
+
+    Placing a reasoning model in the verifier role (rather than the evaluator)
+    creates an asymmetric setup that tests a different hypothesis from Set 2:
+
+      Set 2: reasoning evaluator + capable-but-standard verifier
+      Set 3: strong standard evaluator + reasoning verifier
+
+    The verifier's job is fundamentally a rule-checking task:
+      "Did the evaluator correctly apply rule R to text T?"
+
+    This is a strong match for reasoning models because:
+      • It is a single, well-defined logical question (not open-ended).
+      • The answer is objectively verifiable from the text.
+      • Chain-of-thought reasoning prevents the verifier from being swayed
+        by the evaluator's narrative explanation (the main failure mode
+        observed in baseline runs, where gpt-5.4-mini accepted the
+        evaluator's rationale without checking the source text).
+
+    In the baseline, the verifier (gpt-5.4-mini) repeatedly overrode correct
+    FAIL scores from LLaMA by accepting weak justifications:
+      "Course grades for CHEM 211" → verifier said "valid direct measure" (wrong)
+      "All students passed"        → verifier said "valid result" (wrong)
+
+    An o4-mini verifier would reason: "The rule states course grades do NOT
+    qualify.  The evaluator scored 0, which is correct.  Consistent = true."
+
+  EXPECTED TRADE-OFFS
+    Speed   : Similar to baseline for evaluator; verifier slightly slower.
+    Cost    : Moderate increase (o4-mini verifier tokens).
+    Benefit : Expected higher true-negative rate (catching bad ROARs) because
+              the reasoning verifier is less likely to accept weak evaluator
+              justifications for failing sections.
+
+────────────────────────────────────────────────────────────────────────────────
+SUMMARY COMPARISON
+────────────────────────────────────────────────────────────────────────────────
+
+  Model Set   Evaluator               Verifier          Key test
+  ─────────────────────────────────────────────────────────────────────────
+  Set 1       LLaMA-4-Maverick-17B    gpt-5.4-mini      Baseline
+  Set 2       o4-mini (reasoning)     gpt-4.1           Reasoning evaluator
+  Set 3       DeepSeek-V3.2           o4-mini (reason.) Reasoning verifier
+  ─────────────────────────────────────────────────────────────────────────
+
+  Together, these three sets isolate:
+    1. Does reasoning in the EVALUATOR improve precision on bad ROARs?
+    2. Does a reasoning VERIFIER better catch criterion violations?
+    3. Does model family (LLaMA vs DeepSeek) affect systematic biases?
+
+────────────────────────────────────────────────────────────────────────────────
+DEPLOYMENT REQUIREMENTS
+────────────────────────────────────────────────────────────────────────────────
+
+  To run Model Sets 2 and 3, deploy the following models in Azure:
+
+  o4-mini
+    Service     : Azure OpenAI  (cognitiveservices.azure.com)
+    Endpoint    : same resource as gpt_verifier
+    Deploy as   : recommended name "o4-mini-evaluator" (Set 2 evaluator)
+                  or "o4-mini-verifier" (Set 3 verifier)
+    API version : 2024-12-01-preview or later
+
+  gpt-4.1
+    Service     : Azure OpenAI  (cognitiveservices.azure.com)
+    Endpoint    : same resource as gpt_verifier
+    Deploy as   : recommended name "gpt41-verifier"
+
+  DeepSeek-V3.2
+    Service     : Azure AI Foundry MaaS  (services.ai.azure.com)
+    Endpoint    : same resource as llama-evaluator
+    API version : 2024-05-01-preview
+    Deploy as   : recommended name "deepseek-evaluator"
+
+  After deploying, update model_sets.py with the actual deployment names
+  and run:  python model_evaluation_test.py
+
+================================================================================
+END OF DOCUMENT
+================================================================================
