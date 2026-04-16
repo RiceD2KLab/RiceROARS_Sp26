@@ -10,6 +10,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from structural_flags import get_structural_flags
 
 try:
     from docx import Document
@@ -129,6 +130,7 @@ def main() -> int:
         return 1
     try:
         extracted = parse_roar_document(str(path))
+        extracted["structural_flags"] = get_structural_flags(extracted)
         print(json.dumps(extracted))
         return 0
     except Exception as e:
