@@ -1,37 +1,46 @@
-# Secrets
+# Environment and secrets
 .env
-
-# Python
-__pycache__/
-*.pyc
-*.pyo
+api_keys_endpoints*.txt
 
 # Virtual environments
 qwen-server/
 .venv/
 venv/
+__pycache__/
+*.pyc
 
-# Generated output
-evaluation_results/
+# Output files (generated at runtime)
 reports/
-*.log
+evaluation_results/
+synthetic_data/
 
-# Log files from pipeline runs
+# Log files
+*.log
+*_log.txt
 *_log*.txt
-pipeline_run*.txt
-run_*.txt
-batch_results.txt
+gen_log*.txt
+eval_log*.txt
+ms*_log.txt
+ms*_run*.txt
+final_report_log.txt
+
+# Runtime output
 pipeline_report.txt
 pipeline_report.csv
-
-# Data files (large)
-synthetic_data/
-good_roars/
-bad_roars/
-
-# Docx preview/debug dumps
+pipeline_run*.txt
+batch_results.txt
+run_*.txt
 docx_*.txt
 
-# API key / endpoint reference files
-api_key*
-api_keys*
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Model documentation (not source code)
+model_set_rationale.txt

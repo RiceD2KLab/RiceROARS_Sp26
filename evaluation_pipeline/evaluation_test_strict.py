@@ -69,12 +69,27 @@ def find_files(root: Path) -> list[tuple[Path, str]]:
 
 # ── Pipeline runner (same as evaluation_test.py) ────────────────────────────
 
-def run_with_prompt_set(path: Path, prompt_set: dict) -> tuple:
+def build_pipeline(model_set: dict | None, prompt_set: dict):
+    from pipeline.roar_pipeline import ROARPipeline
+    if model_set is None:
+        return ROARPipeline(prompt_set=prompt_set)
+    ev_cfg = model_set["evaluator"]
+    ve_cfg = model_set["verifier"]
+    return ROARPipeline(
+        evaluator_model=ev_cfg["model"],
+        verifier_model=ve_cfg["model"],
+        evaluator_backend=ev_cfg["backend"],
+        verifier_backend=ve_cfg["backend"],
+        prompt_set=prompt_set,
+    )
+
+
+def run_with_prompt_set(path: Path, prompt_set: dict,
+                        model_set: dict | None = None) -> tuple:
     """Return (PipelineResult | None, error_str | None, elapsed_sec)."""
     from pipeline.extractor import SectionExtractor
-    from pipeline.roar_pipeline import ROARPipeline
 
-    pipeline = ROARPipeline(prompt_set=prompt_set)
+    pipeline = build_pipeline(model_set, prompt_set)
     start    = time.time()
     try:
         sections = SectionExtractor.extract_from_docx(path)
@@ -542,12 +557,13 @@ def _run_one_job(job: dict) -> dict:
     path     = job["path"]
     set_key  = job["set_key"]
     ps       = job["prompt_set"]
+    ms       = job.get("model_set")
     label    = job["label"]
     job_idx  = job["job_idx"]
     n_total  = job["n_total"]
 
     _safe_print(f"  [{job_idx:3d}/{n_total}]  {path.name}  ×  {set_key} ...", flush=True)
-    result, error, elapsed = run_with_prompt_set(path, ps)
+    result, error, elapsed = run_with_prompt_set(path, ps, model_set=ms)
 
     if error:
         _safe_print(f"  [{job_idx:3d}/{n_total}]  {path.name}  ×  {set_key}  ERROR ({elapsed}s)")
@@ -581,9 +597,22 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=DEFAULT_WORKERS, metavar="N",
                         help=f"Number of parallel threads (default {DEFAULT_WORKERS}). "
                              "Each thread runs one (file × prompt_set) job.")
+    parser.add_argument("--model-set", default=None,
+                        help="Model set key from model_sets.py (e.g. MS2_o4mini_GPT41). "
+                             "If omitted, uses config.py defaults.")
     args = parser.parse_args()
 
     from prompt_sets import PROMPT_SETS
+
+    model_set = None
+    model_label = None
+    if args.model_set:
+        from model_sets import MODEL_SETS
+        if args.model_set not in MODEL_SETS:
+            print(f"Unknown model set '{args.model_set}'. Available: {list(MODEL_SETS.keys())}")
+            return
+        model_set = MODEL_SETS[args.model_set]
+        model_label = model_set["label"]
 
     root      = Path(args.dir).resolve()
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -605,6 +634,7 @@ def main() -> None:
             jobs.append({
                 "path": path, "label": label,
                 "set_key": set_key, "prompt_set": PROMPT_SETS[set_key],
+                "model_set": model_set,
                 "job_idx": len(jobs) + 1, "n_total": len(pairs) * len(set_keys),
             })
 
@@ -613,6 +643,8 @@ def main() -> None:
 
     print(f"\n{'='*70}")
     print(f"  STRICT vs WEIGHTED — {len(pairs)} files × {len(set_keys)} prompt sets = {n_total} runs")
+    if model_label:
+        print(f"  Model Set: {model_label}")
     print(f"  Workers: {n_workers} parallel threads")
     print(f"{'='*70}")
     for k in set_keys:
