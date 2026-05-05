@@ -1,0 +1,11 @@
+services:
+  roars:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: roars:latest
+    ports:
+      - "3000:3000"
+    env_file:
+      - evaluation_pipeline/.env
+    restart: unless-stopped

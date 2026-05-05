@@ -1,0 +1,37 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environments
+qwen-server/
+.venv/
+venv/
+
+# Generated output
+evaluation_results/
+reports/
+*.log
+
+# Log files from pipeline runs
+*_log*.txt
+pipeline_run*.txt
+run_*.txt
+batch_results.txt
+pipeline_report.txt
+pipeline_report.csv
+
+# Data files (large)
+synthetic_data/
+good_roars/
+bad_roars/
+
+# Docx preview/debug dumps
+docx_*.txt
+
+# API key / endpoint reference files
+api_key*
+api_keys*
