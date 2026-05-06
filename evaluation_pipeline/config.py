@@ -42,7 +42,7 @@ EVALUATOR_API_VERSION: str = os.getenv("EVALUATOR_API_VERSION", "2024-05-01-prev
 EVALUATOR_TEMPERATURE:       float = float(os.getenv("EVALUATOR_TEMPERATURE", "0.0"))
 EVALUATOR_TOP_P:             float = 1.0
 EVALUATOR_PRESENCE_PENALTY:  float = 0.0   # no penalty needed for structured scoring
-EVALUATOR_MAX_TOKENS:        int   = 4096  # scoring responses are short
+EVALUATOR_MAX_TOKENS:        int   = int(os.getenv("EVALUATOR_MAX_TOKENS", "4096"))
 
 # ---------------------------------------------------------------------------
 # Verifier model  (Qwen3.5-0.8B)

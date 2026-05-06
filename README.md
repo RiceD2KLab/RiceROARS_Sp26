@@ -1,174 +1,167 @@
-# ROARS — Rice Outcomes Assessment Reporting Screening
+# ROARS - Rice Outcomes Assessment Reporting Screening
 
-A pre-screening system that ingests ROAR submissions (PDF or Word) and produces **section-level scores and flags** so Institutional Effectiveness (IE) reviewers can focus attention where it is most needed.
+ROARS is a pre-screening web app for Rice Outcomes Assessment Reporting (ROAR) submissions. It accepts `.pdf` or `.docx` reports and runs a multi-model evaluation pipeline that extracts report sections, scores them against section-level quality rules, and flags reports that need human review.
 
----
+## What The App Does
 
-## What Are ROARs?
+Each ROAR report is evaluated across four sections:
 
-**ROAR** = **R**ice **O**utcomes **A**ssessment **R**eporting. Each academic degree program at Rice University submits annual reports describing:
+- **Program Learning Outcomes (PLOs)**: what students should know or be able to do
+- **Assessment Methods**: how student work was directly assessed
+- **Results and Conclusions**: numeric results and comparison to targets
+- **Improvement Plan**: follow-up actions or continuation plans
 
-- **Program Learning Outcomes (PLOs)** — what students should know or be able to do
-- **Assessment Methods** — how the program directly assessed student work (rubrics, exams, portfolios, etc.)
-- **Results and Conclusions** — aggregated results, comparison to targets, and interpretation
-- **Improvement Plan** — actions to be taken when targets are not met
-
----
-
-## System Overview
-
-```
-┌─────────────────────┐     ┌──────────────────────────────┐     ┌─────────────────────────┐
-│  ROAR .docx / .pdf   │     │  Extract → Evaluate → Verify  │     │  Section scores + flags  │
-│  (upload via UI)     │ ──► │  (multi-model LLM pipeline)   │ ──► │  (pass/fail per section) │
-└─────────────────────┘     └──────────────────────────────┘     └─────────────────────────┘
-```
-
-The pipeline uses a **multi-model evaluator–verifier architecture** with an iterative feedback loop:
-
-1. **Input & Decomposition** — Parse the ROAR into four sections (PLO, Methods, Results, Plan)
-2. **Initial Evaluation** — DeepSeek-V3.2 scores each section (pass/fail) with Chain-of-Thought reasoning
-3. **Verification** — o4-mini independently checks the evaluator's scores against scoring rules
-4. **Feedback Loop** — If disagreements exist, the evaluator revises; loop repeats until consensus (max 2 iterations)
-5. **Final Output** — Section scores, weighted quality score, strict classification, and flags
-
-**Default configuration:** MS3 (DeepSeek-V3.2 evaluator + o4-mini verifier) with Chain-of-Thought Evidence Anchoring prompts and strict classification (all sections must pass).
-
----
+The final project configuration uses **DeepSeek-V3.2** as the evaluator and **o4-mini** as the verifier. The evaluator scores the report, the verifier independently checks the scoring, and the pipeline can loop through feedback until the two models agree or the maximum iteration count is reached.
 
 ## Repository Structure
 
-```
-roars/
-├── app/                      # Next.js frontend
-│   ├── layout.tsx            # Root layout
-│   ├── page.tsx              # Main UI (upload, model selection, results table, detail panel)
-│   ├── globals.css           # Tailwind styles
-│   └── api/analyze/
-│       └── route.ts          # POST endpoint — runs Python pipeline via subprocess
-├── evaluation_pipeline/      # Python backend (the core evaluation engine)
-│   ├── config.py             # Azure endpoints, API keys, sampling parameters
-│   ├── model_sets.py         # Model configurations (MS1/MS2/MS3)
-│   ├── prompt_sets.py        # Prompt strategies (A: Disqualifier-First, B: Chain-of-Thought, C: Few-Shot)
-│   ├── main.py               # Standalone CLI
-│   ├── pipeline/
-│   │   ├── extractor.py      # Step 1: Section extraction from .docx/.pdf
-│   │   ├── evaluator.py      # Step 2: Primary LLM scoring
-│   │   ├── verifier.py       # Step 3: Independent verification
-│   │   ├── feedback.py       # Step 5: Feedback reconciliation
-│   │   └── roar_pipeline.py  # Orchestrator (wires all steps together)
-│   ├── models/schemas.py     # Pydantic data models
-│   ├── prompts/templates.py  # Shared prompt templates
-│   ├── utils/
-│   │   ├── llm_factory.py    # LLM client builder (Azure OpenAI, Ollama, etc.)
-│   │   └── json_parser.py    # Robust JSON extraction from LLM output
-│   └── .env.example          # Template for API keys and endpoints
-├── scripts/
-│   ├── run_roar_evaluation.py  # Bridge: Next.js API → evaluation_pipeline
-│   ├── parse_roar_docx.py      # Legacy .docx parser (fallback)
-│   └── requirements.txt        # Python dependencies
-├── lib/types/roar.ts         # Shared TypeScript types
-├── Dockerfile                # Multi-stage build (Node + Python)
-├── docker-compose.yml        # One-command local deployment
-├── package.json
-└── tsconfig.json
+```text
+app/                         Next.js frontend and API route
+app/api/analyze/route.ts     Upload endpoint that runs the Python pipeline
+evaluation_pipeline/         Core Python ROAR evaluation pipeline
+evaluation_pipeline/.env.example
+                             Environment variable template, safe to commit
+evaluation_pipeline/config.py
+                             LLM endpoints, model names, and pipeline settings
+evaluation_pipeline/model_sets.py
+                             Model profile definitions
+evaluation_pipeline/prompt_sets.py
+                             Prompt strategy definitions
+scripts/run_roar_evaluation.py
+                             Bridge script used by the Next.js API
+scripts/requirements.txt     Python dependencies
+lib/types/roar.ts            Shared TypeScript result types
+Dockerfile                   Container build
+docker-compose.yml           Local Docker Compose setup
 ```
 
----
+## Prerequisites
 
-## Getting Started
+- Node.js 18+
+- Python 3.10+
+- Azure AI Foundry / Azure OpenAI credentials for the evaluator and verifier deployments
 
-### Prerequisites
+## Local Setup
 
-- **Node.js 18+** (for the Next.js app)
-- **Python 3.10+** on PATH as `python` or `python3` (set `PYTHON` env var to override)
-
-### Install and run
+Install dependencies:
 
 ```bash
-# Install Node dependencies
 npm install
-
-# Install Python dependencies
 python -m venv .venv
-.venv\Scripts\activate          # macOS/Linux: source .venv/bin/activate
+.venv\Scripts\activate
 pip install -r scripts/requirements.txt
+```
 
-# Configure LLM endpoints
+On macOS/Linux, activate the virtual environment with:
+
+```bash
+source .venv/bin/activate
+```
+
+Create your private environment file:
+
+```bash
+copy evaluation_pipeline\.env.example evaluation_pipeline\.env
+```
+
+On macOS/Linux:
+
+```bash
 cp evaluation_pipeline/.env.example evaluation_pipeline/.env
-# Edit .env with your Azure API keys and endpoints
+```
 
-# Start the dev server
+Then edit `evaluation_pipeline/.env` and replace the placeholder values with real credentials. Do not commit `.env`.
+
+Start the app:
+
+```bash
 npx next dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to use the app.
+Open http://localhost:3000.
 
-### LLM Configuration
+## Environment Variables
 
-Copy `evaluation_pipeline/.env.example` to `evaluation_pipeline/.env` and fill in:
+The app loads environment variables from `evaluation_pipeline/.env`. The bridge script also supports a repo-root `.env`, but `evaluation_pipeline/.env` is the recommended location for this project.
 
-| Variable | Description |
-|----------|-------------|
-| `EVALUATOR_API_BASE` | Azure AI Foundry endpoint for DeepSeek-V3.2 |
-| `EVALUATOR_API_KEY` | API key for the evaluator endpoint |
-| `AZURE_ENDPOINT` | Azure OpenAI endpoint (for o4-mini verifier) |
-| `AZURE_API_KEY` | API key for Azure OpenAI |
+Required for the final project configuration:
 
-Without valid credentials, uploads fall back to **legacy .docx parsing** (sections extracted but not scored) or **placeholder content** for PDFs.
+| Variable | Example | Purpose |
+| --- | --- | --- |
+| `EVALUATOR_BACKEND` | `openai` | Uses the OpenAI-compatible client for Azure AI Foundry MaaS |
+| `EVALUATOR_MODEL` | `DeepSeek-V3.2-evaluator` | Evaluator deployment/model name |
+| `EVALUATOR_API_BASE` | `https://<resource>.services.ai.azure.com/models/` | Azure AI Foundry models endpoint |
+| `EVALUATOR_API_KEY` | `<secret>` | Key for the evaluator endpoint |
+| `EVALUATOR_API_VERSION` | `2024-05-01-preview` | API version for the evaluator endpoint |
+| `VERIFIER_BACKEND` | `azure_openai` | Uses Azure OpenAI for the verifier |
+| `VERIFIER_MODEL` | `o4-mini-verifier` | Verifier model/deployment label |
+| `VERIFIER_AZURE_DEPLOYMENT` | `o4-mini-verifier` | Azure OpenAI verifier deployment name |
+| `AZURE_ENDPOINT` | `https://<resource>.cognitiveservices.azure.com/` | Shared Azure OpenAI endpoint |
+| `AZURE_API_KEY` | `<secret>` | Azure OpenAI key |
+| `AZURE_API_VERSION` | `2025-01-01-preview` | Azure OpenAI API version |
 
-### Environment Variables (optional)
+Useful defaults:
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ROAR_MODEL_PROFILE` | `MS3_DeepSeek_o4mini` | Model set to use |
-| `ROAR_PROMPT_SET` | `B_ChainOfThought` | Prompt strategy |
-| `ROAR_CLASSIFICATION_STRATEGY` | `strict` | `strict` (all sections must pass) or `weighted` |
-| `ROAR_PIPELINE_TIMEOUT_MS` | `300000` | Max time per file (ms) |
-| `MAX_ITERATIONS` | `2` | Max feedback loop iterations |
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `ROAR_MODEL_PROFILE` | `MS3_DeepSeek_o4mini` | Final project model set |
+| `ROAR_PROMPT_SET` | `B_ChainOfThought` | Final project prompt strategy |
+| `ROAR_CLASSIFICATION_STRATEGY` | `strict` | Requires all four sections to pass |
+| `MAX_ITERATIONS` | `2` | Maximum evaluator-verifier feedback loops |
+| `ROAR_PIPELINE_TIMEOUT_MS` | `300000` | Next.js API timeout per file, in milliseconds |
+| `PYTHON` | auto-detected | Optional Python executable override |
 
----
+Reasoning-model settings:
 
-## Running with Docker
+```env
+VERIFIER_AZURE_TEMPERATURE=1.0
+VERIFIER_AZURE_MAX_TOKENS=16384
+```
+
+These are included in `.env.example` because o-series reasoning deployments require temperature `1.0` and need a larger token budget.
+
+## Running With Docker
+
+Build and run directly:
 
 ```bash
-# Build
 docker build -t roars .
-
-# Run (with env file for API keys)
 docker run --rm -p 3000:3000 --env-file evaluation_pipeline/.env roars
 ```
 
 Or use Docker Compose:
 
 ```bash
-docker compose up --build     # Start
-docker compose down            # Stop
+docker compose up --build
+docker compose down
 ```
-
-Open [http://localhost:3000](http://localhost:3000).
-
----
-
-## Model Configurations
-
-| Set | Evaluator | Verifier | Use Case |
-|-----|-----------|----------|----------|
-| MS1 | LLaMA-4-Maverick | GPT-5.4-mini | Baseline |
-| MS2 | o4-mini (reasoning) | gpt-4.1 | Reasoning evaluator |
-| **MS3** | **DeepSeek-V3.2** | **o4-mini (reasoning)** | **Production default** |
-
-The UI provides dropdown selectors to override the evaluator and verifier deployment for individual requests.
-
----
 
 ## Scoring Rules
 
-Each section is scored pass (1) or fail (0):
+Each section receives a binary score:
 
-- **PLO** (25%): Must describe what students will achieve, know, or be able to do
-- **Methods** (30%): Must name a direct assessment measure AND a rubric/scoring criteria
-- **Results** (30%): Must contain actual numbers AND comparison to a benchmark
-- **Plan** (15%): Must describe a specific next step or continuation plan
+- **PLO**: must describe what students will achieve, know, or be able to do
+- **Methods**: must name a direct assessment measure and a rubric/scoring criterion
+- **Results**: must include actual numbers and comparison to a benchmark
+- **Plan**: must describe a specific next step or continuation plan
 
-**Strict classification:** A ROAR passes only if all four sections score 1. Any failure flags the document for human review.
+The final classification strategy is strict: a ROAR passes only when all four sections receive `1`. Any section score of `0` flags the document for human review.
+
+## Sharing Credentials With An Evaluator
+
+Do not upload a real `.env` file or API keys to GitHub. Commit only `evaluation_pipeline/.env.example`.
+
+For grading, send the instructor the private values separately and ask them to create `evaluation_pipeline/.env` from the template. A short email can be:
+
+```text
+Hi Professor,
+
+I uploaded the project code to GitHub without API credentials. To run the full ROARS evaluation pipeline, please copy evaluation_pipeline/.env.example to evaluation_pipeline/.env and fill in the Azure AI Foundry / Azure OpenAI values I am sending separately.
+
+The required variables are EVALUATOR_API_KEY, EVALUATOR_API_BASE, AZURE_API_KEY, and AZURE_ENDPOINT. The model/deployment names and API versions are already shown in the template.
+
+Best,
+<your name>
+```
+
+Use a private channel for the real key values. If a key was ever pasted into a public repo, chat, screenshot, or shared document, rotate it before grading.
