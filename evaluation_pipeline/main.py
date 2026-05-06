@@ -35,6 +35,11 @@ from pathlib import Path
 
 import config
 from pipeline.roar_pipeline import ROARPipeline
+from prompt_sets import PROMPT_SETS
+
+# Final selected prompt set: Set B — Chain-of-Thought Evidence Anchoring.
+# (See evaluation_results/final_report_*.csv for the comparison vs Sets A and C.)
+DEFAULT_PROMPT_SET_KEY = "B_ChainOfThought"
 
 
 # ---------------------------------------------------------------------------
@@ -62,6 +67,14 @@ _SECTION_LABELS = {
     "plan":    "Plan         (weight 15%)",
 }
 
+_SECTION_FIELDS = ("plo", "methods", "results", "plan")
+
+
+def _strict_verdict(result) -> tuple[str, list[str]]:
+    """STRICT classification: GOOD only if ALL four sections score 1."""
+    failed = [f for f in _SECTION_FIELDS if getattr(result.final_scores, f) == 0]
+    return ("BAD" if failed else "GOOD"), failed
+
 
 def _print_result(result) -> None:
     print()
@@ -77,6 +90,12 @@ def _print_result(result) -> None:
 
     pct = result.weighted_score * 100
     print(f"\nWEIGHTED QUALITY SCORE : {result.weighted_score:.4f}  ({pct:.1f} / 100)")
+
+    verdict, failed = _strict_verdict(result)
+    print(f"VERDICT (STRICT)       : {verdict}")
+    if failed:
+        print(f"FAILED SECTIONS        : {', '.join(failed)}")
+
     print(f"CONSISTENT             : {'Yes' if result.consistent else 'No'}")
     print(f"FEEDBACK ITERATIONS    : {result.iterations}")
 
@@ -92,12 +111,15 @@ def _print_result(result) -> None:
 
 
 def _print_json(result) -> None:
+    verdict, failed = _strict_verdict(result)
     output = {
-        "final_scores":   result.final_scores.model_dump(),
-        "weighted_score": result.weighted_score,
-        "consistent":     result.consistent,
-        "iterations":     result.iterations,
-        "reasoning":      result.reasoning.model_dump() if result.reasoning else None,
+        "final_scores":    result.final_scores.model_dump(),
+        "weighted_score":  result.weighted_score,
+        "verdict":         verdict,
+        "failed_sections": failed,
+        "consistent":      result.consistent,
+        "iterations":      result.iterations,
+        "reasoning":       result.reasoning.model_dump() if result.reasoning else None,
     }
     print(json.dumps(output, indent=2))
 
@@ -148,6 +170,15 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["ollama", "openai"],
         dest="verifier_backend",
         help="Backend for the verifier (default: openai → vLLM / SGLang)",
+    )
+
+    # Prompt set selection (final selected default: B — Chain-of-Thought)
+    p.add_argument(
+        "--prompt-set",
+        default=DEFAULT_PROMPT_SET_KEY,
+        choices=list(PROMPT_SETS.keys()),
+        dest="prompt_set_key",
+        help="Prompt engineering strategy (defined in prompt_sets.py)",
     )
 
     # Pipeline tuning
@@ -231,11 +262,13 @@ def main() -> None:
     # -------------------------------------------------------------------
     # Run pipeline
     # -------------------------------------------------------------------
+    prompt_set = PROMPT_SETS[args.prompt_set_key]
     logger.info(
-        "Starting pipeline  |  evaluator=%s (%s)  verifier=%s (%s)  max_iter=%d",
+        "Starting pipeline  |  evaluator=%s (%s)  verifier=%s (%s)  "
+        "prompt_set=%s  max_iter=%d",
         args.evaluator, args.evaluator_backend,
         args.verifier,  args.verifier_backend,
-        args.max_iter,
+        args.prompt_set_key, args.max_iter,
     )
 
     pipeline = ROARPipeline(
@@ -244,6 +277,7 @@ def main() -> None:
         evaluator_backend=args.evaluator_backend,
         verifier_backend=args.verifier_backend,
         max_iterations=args.max_iter,
+        prompt_set=prompt_set,
     )
 
     result = pipeline.run(document, pre_sections=pre_sections)

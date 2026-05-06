@@ -159,8 +159,10 @@ def find_files(root: Path) -> list[tuple[Path, str]]:
 def run_pipeline(path: Path):
     from pipeline.extractor import SectionExtractor
     from pipeline.roar_pipeline import ROARPipeline
+    from prompt_sets import PROMPT_SETS
 
-    pipeline = ROARPipeline()
+    # Final selected pipeline: MS3 models (via config.py / .env) + Prompt Set B.
+    pipeline = ROARPipeline(prompt_set=PROMPT_SETS["B_ChainOfThought"])
     sections = SectionExtractor.extract_from_docx(path)
     result   = pipeline.run(pre_sections=sections)
     return result

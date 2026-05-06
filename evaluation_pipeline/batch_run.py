@@ -54,8 +54,10 @@ def find_roar_files(root: Path) -> list[tuple[Path, str]]:
 def run_one(path: Path) -> dict:
     from pipeline.extractor import SectionExtractor
     from pipeline.roar_pipeline import ROARPipeline
+    from prompt_sets import PROMPT_SETS
 
-    pipeline = ROARPipeline()
+    # Final selected pipeline: MS3 models (via config.py / .env) + Prompt Set B.
+    pipeline = ROARPipeline(prompt_set=PROMPT_SETS["B_ChainOfThought"])
     start = time.time()
     try:
         sections = SectionExtractor.extract_from_docx(path)

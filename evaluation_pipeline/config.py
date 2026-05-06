@@ -18,9 +18,12 @@ EVALUATOR_BACKEND: str = os.getenv("EVALUATOR_BACKEND", "openai")
 VERIFIER_BACKEND:  str = os.getenv("VERIFIER_BACKEND",  "azure_openai")
 
 # ---------------------------------------------------------------------------
-# Evaluator model  (LLaMA – Azure AI Foundry)
+# Evaluator model  (DeepSeek-V3.2 – Azure AI Foundry MaaS)  ← MS3 default
 # ---------------------------------------------------------------------------
-EVALUATOR_MODEL: str = os.getenv("EVALUATOR_MODEL", "llama-evaluator")
+# Final selected configuration: Model Set 3 (DeepSeek-V3.2 evaluator + o4-mini
+# reasoning verifier).  Override with EVALUATOR_MODEL / VERIFIER_* env vars
+# (or the --evaluator / --verifier CLI flags in main.py) to use MS1/MS2.
+EVALUATOR_MODEL: str = os.getenv("EVALUATOR_MODEL", "DeepSeek-V3.2-evaluator")
 
 # Azure AI Foundry models endpoint.
 # The `models/` base URL + api-version query param is the correct format for
@@ -65,7 +68,7 @@ AZURE_API_KEY:     str = os.getenv("AZURE_API_KEY", "")
 
 # ── Per-role overrides (optional – fall back to shared AZURE_* above) ──────
 VERIFIER_AZURE_ENDPOINT:    str = os.getenv("VERIFIER_AZURE_ENDPOINT",    AZURE_ENDPOINT)
-VERIFIER_AZURE_DEPLOYMENT:  str = os.getenv("VERIFIER_AZURE_DEPLOYMENT",  "gpt_verifier")
+VERIFIER_AZURE_DEPLOYMENT:  str = os.getenv("VERIFIER_AZURE_DEPLOYMENT",  "o4-mini-verifier")
 VERIFIER_AZURE_API_VERSION: str = os.getenv("VERIFIER_AZURE_API_VERSION", AZURE_API_VERSION)
 VERIFIER_AZURE_API_KEY:     str = os.getenv("VERIFIER_AZURE_API_KEY",     AZURE_API_KEY)
 
@@ -81,13 +84,15 @@ EVALUATOR_AZURE_API_KEY:     str = os.getenv("EVALUATOR_AZURE_API_KEY",     AZUR
 EVALUATOR_AZURE_TEMPERATURE:  float = float(os.getenv("EVALUATOR_AZURE_TEMPERATURE", "1.0"))
 EVALUATOR_AZURE_MAX_TOKENS:   int   = int(os.getenv("EVALUATOR_AZURE_MAX_TOKENS",   "16384"))
 
-# Verifier sampling — configurable so o4-mini (reasoning) and GPT (standard) both work.
-# For GPT-class verifiers (gpt-5.4-mini, gpt-4.1): temperature=0.0
-# For o4-mini verifier (reasoning model):            temperature=1.0, max_tokens=16384
+# Verifier sampling — defaults are tuned for the MS3 o4-mini reasoning verifier:
+#   • temperature MUST be 1.0 (o-series models reject temperature < 1)
+#   • max_tokens 16384 leaves headroom for the reasoning trace + JSON output
+# For GPT-class verifiers (gpt-5.4-mini, gpt-4.1) override via env:
+#   VERIFIER_AZURE_TEMPERATURE=0.0  VERIFIER_AZURE_MAX_TOKENS=4096
 VERIFIER_TEMPERATURE:         float = float(os.getenv("VERIFIER_TEMPERATURE",          "0.0"))
 VERIFIER_MAX_TOKENS:          int   = 4096
-VERIFIER_AZURE_TEMPERATURE:   float = float(os.getenv("VERIFIER_AZURE_TEMPERATURE",    "0.0"))
-VERIFIER_AZURE_MAX_TOKENS:    int   = int(os.getenv("VERIFIER_AZURE_MAX_TOKENS",       "4096"))
+VERIFIER_AZURE_TEMPERATURE:   float = float(os.getenv("VERIFIER_AZURE_TEMPERATURE",    "1.0"))
+VERIFIER_AZURE_MAX_TOKENS:    int   = int(os.getenv("VERIFIER_AZURE_MAX_TOKENS",       "16384"))
 
 # ── "openai" backend fallback ─────────────────────────────────────────────
 # Used when VERIFIER_BACKEND=openai (e.g. vLLM / SGLang with explicit creds).
